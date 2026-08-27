@@ -1,0 +1,22 @@
+# Botcchi 主服务（systemd 用户单元，崩溃自动重启）
+# 安装：cp docker/systemd/botcchi.service ~/.config/systemd/user/
+#       systemctl --user daemon-reload && systemctl --user enable --now botcchi
+# 日志：journalctl --user -u botcchi -f
+# 注意：WorkingDirectory / ExecStart 路径按实际部署位置修改；
+#       开机免登录自启需 loginctl enable-linger $USER
+[Unit]
+Description=Botcchi AI assistant
+After=network-online.target botcchi-postgres.service botcchi-redis.service botcchi-napcat.service
+Wants=botcchi-postgres.service botcchi-redis.service botcchi-napcat.service
+# 连续崩溃保护：5 分钟内最多重启 5 次，超过则停下等人工介入
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+WorkingDirectory=%h/Projects/Botcchi
+ExecStart=%h/.local/bin/uv run botcchi serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

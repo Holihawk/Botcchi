@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Botcchi: serve",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "botcchi",
+      "args": ["serve"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUNBUFFERED": "1" }
+    },
+    {
+      "name": "Botcchi: chat（终端对话调试）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "botcchi",
+      "args": ["chat"],
+      "cwd": "${workspaceFolder}",
+      // chat 要读 stdin，必须走集成终端
+      "console": "integratedTerminal"
+    }
+  ]
+}

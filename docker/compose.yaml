@@ -1,0 +1,29 @@
+# 开发/部署基础设施：docker compose -f docker/compose.yaml up -d
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: botcchi
+      POSTGRES_PASSWORD: botcchi
+      POSTGRES_DB: botcchi
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18 起数据目录为 /var/lib/postgresql（带主版本子目录）
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botcchi"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

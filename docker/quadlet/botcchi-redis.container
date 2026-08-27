@@ -1,0 +1,16 @@
+# Podman Quadlet：Redis
+[Unit]
+Description=Botcchi Redis
+
+[Container]
+Image=docker.io/library/redis:8
+ContainerName=botcchi-redis
+PublishPort=127.0.0.1:6379:6379
+Volume=botcchi-redisdata:/data
+Exec=redis-server --save 60 1
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

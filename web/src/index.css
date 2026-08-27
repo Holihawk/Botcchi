@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-accent: #f0748c; /* 波奇粉 */
+  --color-accent-strong: #e2537a;
+}
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    "PingFang SC",
+    "Noto Sans CJK SC",
+    "Microsoft YaHei",
+    sans-serif;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-neutral-200);
+  background: white;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--color-accent);
+}
+.dark .input {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+
+/* markdown 基础样式 */
+.prose-chat :is(p, ul, ol, pre, blockquote):not(:last-child) {
+  margin-bottom: 0.5rem;
+}
+.prose-chat ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.prose-chat ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.prose-chat code {
+  background: rgb(0 0 0 / 0.06);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+.dark .prose-chat code {
+  background: rgb(255 255 255 / 0.1);
+}
+.prose-chat pre {
+  background: rgb(0 0 0 / 0.05);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+.dark .prose-chat pre {
+  background: rgb(255 255 255 / 0.06);
+}
+.prose-chat pre code {
+  background: none;
+  padding: 0;
+}
+.prose-chat a {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+}
+.prose-chat table {
+  border-collapse: collapse;
+}
+.prose-chat :is(th, td) {
+  border: 1px solid rgb(128 128 128 / 0.3);
+  padding: 0.25rem 0.5rem;
+}

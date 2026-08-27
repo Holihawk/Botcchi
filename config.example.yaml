@@ -1,0 +1,114 @@
+# Botcchi 配置示例：复制为 config.yaml 后填写
+server:
+  host: 0.0.0.0
+  port: 8300
+
+onebot:
+  path: /onebot/v11/ws
+  access_token: null          # 与 NapCat/Lagrange 反向 WS 的 token 一致
+  superusers: []              # 超管 QQ 号列表，如 ["12345678"]
+
+trigger:
+  private_chat: true
+  group_reply_rate: 0.02      # 群内非 @ 消息随机回复概率（伪人模式），0 关闭
+  cooldown_seconds: 0
+  wake_words: ["波奇"]        # 含唤醒词时必回；群里只喊唤醒词会触发人格 greeting 快速问候
+  group_window_size: 30       # 伪人模式感知的群聊上下文条数
+
+database:
+  # PostgreSQL（推荐，docker compose 可一键起）；留空则会话存内存、长期记忆禁用
+  url: postgresql+asyncpg://botcchi:botcchi@localhost:5432/botcchi
+
+redis:
+  url: redis://localhost:6379/0   # 群聊窗口存储；留空用进程内实现
+
+memory:
+  enable: true
+  model: null                 # 记忆提取用模型，留空复用默认人格的模型
+  extract_every: 8            # 每会话每 8 轮对话提取一次
+  max_inject: 10              # 注入 prompt 的记忆条数上限
+  max_per_scope: 200          # 单用户/群记忆容量上限
+
+social:
+  enable: true                # 签到/好感度/金币/商店（需要 database.url）
+  double_probability: 0.09    # 签到好感度双倍的触发概率
+  streak_bonus_step: 5        # 连续签到每天的金币加成步长
+  streak_bonus_cap: 7         # 连签加成封顶天数
+  initial_coins: 2000         # 新用户建档时的初始金币
+  tool_costs: {}              # 金币工具调用费，如 {draw_image: 100}；超管免费
+
+stickers:                     # 表情包：波奇按心情发 QQ 表情（assets/stickers/<情绪>/）
+  enabled: true
+  cooldown_seconds: 45        # 同一会话两次表情包的最小间隔（秒）
+  probability: 1.0            # 模型想发时实际放行的概率，调低更克制
+                              # 空 @/纯唤醒词问候固定追加“打招呼/吃喝/惊讶”之一，
+                              # 不受 probability 和 cooldown_seconds 限制；问候文案与冷却
+                              # 在 data/assistants/<人格>.yaml 的 greeting 下配置
+
+websearch:                    # 联网搜索与网页阅读（Tavily，https://tavily.com 免费额度可用）
+  api_key: null               # tvly-…；留空则关闭 web_search / fetch_page 工具
+  max_results: 5
+
+weather:                      # 和风天气（付费版；JWT 或 api_key 认证二选一，JWT 优先）
+  api_host: ""                # 控制台分配的专属主机，如 https://xxxx.re.qweatherapi.com；留空关闭
+  jwt_sub: ""                 # 项目 ID
+  jwt_kid: ""                 # 凭据 ID
+  jwt_private_key: ""         # Ed25519 私钥 PEM（可用 \n 转义写成单行）
+  # api_key: ""               # 或改用 X-QW-Api-Key 认证
+
+imagegen:                     # GPT 绘图（OpenAI images API 兼容端点，URL/key 独立于对话 providers）
+  api_base: ""                # 如 https://api.openai.com/v1 或中转地址；留空关闭绘图
+  api_key: ""
+  model: gpt-image-2
+  cooldown_seconds: 240       # 同一用户两次绘图的最小间隔（超管不受限）
+  # proxy: false              # 代理策略同 provider：省略跟随环境变量 / false 直连 / 字符串指定
+
+linkparse:                    # 群聊链接自动解析（B站/抖音/微博/小红书/快手/AcFun/网易云）
+  send_media: true            # 解析后直接转发视频/音频/图集（关闭则只发摘要卡）
+  max_video_seconds: 480      # 超过该时长的视频不搬运（0 = 不限制）
+  max_media_mb: 50            # 单个媒体文件大小上限
+  max_images: 9               # 图集最多转发的图片数
+  max_content_images: 60      # 图文正文（合并转发）里最多搬运的图片数
+
+perms:                        # 权限体系（封禁/授权/群功能开关，需要 database.url）
+  owner_level: 8              # 群主的隐式权限等级
+  admin_level: 5              # 群管理员的隐式权限等级
+  manage_level: 5             # 使用封禁/授权/功能开关/定时设置等管理指令所需等级
+
+render:
+  zoom: 2.0                       # 卡片出图放大倍率（2 = 高清）
+  font_family: Noto Sans CJK SC   # 出图字体，需系统已安装中文字体
+  font_dirs: []                   # 额外字体目录（自带字体文件时使用）
+
+log:
+  level: INFO                 # 控制台与文件共用；改 DEBUG 会打印协议端发来的
+                              # 未处理事件原文（排查"某类事件收不到"时用）
+  dir: data/logs               # 按天轮转落盘：全量 {date}.log + 仅错误 error_{date}.log；留空则只留控制台/journal
+  retention_days: 15           # 超过天数的日志文件自动清理
+
+
+# 外部 MCP 工具服务器（可选）：工具以 "服务器名_工具名" 注册，在人格里勾选启用
+mcp_servers: []
+#  - name: fetch                 # stdio：子进程方式
+#    transport: stdio
+#    command: uvx
+#    args: [mcp-server-fetch]
+#  - name: myserver              # http：连接远程 streamable HTTP 服务
+#    transport: http
+#    url: http://localhost:8000/mcp
+
+providers:
+  - name: deepseek
+    api_type: openai
+    api_base: https://api.deepseek.com/v1
+    proxy: false          # 代理策略：省略=跟随 http(s)_proxy 环境变量；
+                          # false=强制直连（国内端点建议）；也可写代理地址
+    api_keys:
+      - sk-xxxxxxxx
+    models:
+      - name: deepseek-chat
+        temperature: 1.0
+
+default_assistant: bocchi
+assistants_dir: data/assistants
+history_max_messages: 40

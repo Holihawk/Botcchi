@@ -1,0 +1,23 @@
+# Podman Quadlet：PostgreSQL
+# 安装：cp docker/quadlet/*.container ~/.config/containers/systemd/
+#       systemctl --user daemon-reload && systemctl --user start botcchi-postgres
+[Unit]
+Description=Botcchi PostgreSQL
+
+[Container]
+Image=docker.io/library/postgres:18
+ContainerName=botcchi-postgres
+Environment=POSTGRES_USER=botcchi
+Environment=POSTGRES_PASSWORD=botcchi
+Environment=POSTGRES_DB=botcchi
+PublishPort=127.0.0.1:5432:5432
+Volume=botcchi-pgdata:/var/lib/postgresql
+HealthCmd=pg_isready -U botcchi
+HealthInterval=5s
+HealthRetries=10
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

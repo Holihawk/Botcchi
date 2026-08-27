@@ -1,0 +1,20 @@
+# Podman Quadlet：NapCat（QQ 协议端）
+# Network=host：容器直接使用宿主网络——WebUI 在 http://127.0.0.1:6099，
+# 反向 WS 直接填 ws://127.0.0.1:8300/onebot/v11/ws 即可连到 Botcchi。
+[Unit]
+Description=Botcchi NapCat (QQ)
+
+[Container]
+Image=docker.io/mlikiowa/napcat-docker:latest
+ContainerName=botcchi-napcat
+Network=host
+Environment=NAPCAT_UID=1000
+Environment=NAPCAT_GID=1000
+Volume=botcchi-napcat-qq:/app/.config/QQ
+Volume=botcchi-napcat-config:/app/napcat/config
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

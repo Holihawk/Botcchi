@@ -1,0 +1,56 @@
+name: bocchi
+display_name: 波奇
+# 模型提供商
+model: deepseek/deepseek-v4-flash
+# 兜底模型提供商
+fallback_models: []
+# 可用工具（默认全部开启）
+tools:
+- current_time
+- web_search
+- fetch_page
+- save_memory
+- search_memory
+- send_sticker
+- share_music
+- poke_user
+- sign_in
+- get_user_social
+- equip_pendant
+- list_backpack
+- send_like
+- set_reminder
+- list_reminders
+- cancel_reminder
+- get_daily_report
+- schedule_daily_report
+- summarize_group
+- schedule_group_summary
+- daily_pig_fortune
+- find_pig
+- parse_link
+- draw_image
+- get_weather
+max_tool_rounds: 4
+policy:
+  split: true
+  split_min_chars: 40       # 回复较短时保持一条，不为拆分而拆分
+  max_segments: 4          # 一条回复最多拆成几条消息发
+  max_chars: 30            # 单条消息字数上限，超了按逗号/分号再断（0 = 不限）
+  delay_per_char: 0.08
+  max_delay: 1.5
+prompt_file: bocchi.prompt.md
+greeting:
+  enabled: true
+  replies:
+  - "哦豁？！"
+  - "呜...后藤在呢"
+  - "欸？叫后藤做什么呀"
+  - "怎么啦？"
+  - "后藤有听到哦"
+  - "呀...是在叫后藤吗？"
+  - "后藤、后藤一直都在哦"
+  - "呜哇！突然被点名了..."
+  - "那、那个...有什么事吗？"
+  - "听、听见啦，不用喊第二遍..."
+  cooldown_seconds: 10
