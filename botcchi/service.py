@@ -338,6 +338,10 @@ class ChatService:
         if not self.trigger.should_reply(incoming):
             return
 
+        # OneBot 图片 URL 通常带 QQ 临时签名，外部模型服务未必能访问；
+        # 在确认需要回复后由渠道本地化，避免无关群图片产生下载开销。
+        await channel.prepare_incoming(incoming)
+
         assistant = await self.resolve_assistant(incoming.session)
         # 直接对话 = @ / 私聊 / 点名唤醒；只有概率插话走伪人语境（无工具上下文）
         direct = (

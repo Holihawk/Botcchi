@@ -4,12 +4,16 @@ NapCat / Lagrange 作为客户端连入本服务（协议面比较小）
 """
 
 import asyncio
+import base64
 import json
+import mimetypes
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
@@ -18,6 +22,10 @@ from ..base import Channel, IncomingMessage, IncomingRequest, SessionKey
 
 API_TIMEOUT = 30.0
 FRIEND_CACHE_TTL = 300.0
+IMAGE_FETCH_TIMEOUT = 15.0
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# 项目临时资源目录；部署时工作目录为项目根目录。
+IMAGE_TEMP_DIR = Path("data/temp/quote-images")
 
 MessageHandler = Callable[[IncomingMessage], Awaitable[None]]
 RequestHandler = Callable[[IncomingRequest], Awaitable[None]]
@@ -368,6 +376,55 @@ class OneBotAdapter(Channel):
             if len(incoming.images) >= self.MAX_QUOTE_IMAGES:
                 break
             incoming.images.append(url)
+
+    async def prepare_incoming(self, incoming: IncomingMessage) -> None:
+        """下载入站图片并转成 data URL，避免模型服务访问 QQ 临时链接。"""
+        if not incoming.images:
+            return
+        materialized: list[str] = []
+        for url in incoming.images:
+            if url.startswith("data:image/"):
+                materialized.append(url)
+                continue
+            try:
+                materialized.append(await self._download_image(url))
+            except Exception as e:
+                logger.warning(f"图片本地化失败，跳过该图片: {e}")
+        incoming.images = materialized
+
+    async def _download_image(self, url: str) -> str:
+        """图片先落盘到临时目录，再编码为模型可直接读取的 data URL。"""
+        await asyncio.to_thread(IMAGE_TEMP_DIR.mkdir, parents=True, exist_ok=True)
+        timeout = httpx.Timeout(IMAGE_FETCH_TIMEOUT)
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ) as client:
+            async with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "").split(";", 1)[0]
+                if not content_type.startswith("image/"):
+                    raise ValueError(f"响应不是图片（{content_type or '未知类型'}）")
+                declared = int(resp.headers.get("content-length") or 0)
+                if declared > MAX_IMAGE_BYTES:
+                    raise ValueError(f"图片超过 {MAX_IMAGE_BYTES // 1024 // 1024}MB")
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in resp.aiter_bytes():
+                    size += len(chunk)
+                    if size > MAX_IMAGE_BYTES:
+                        raise ValueError(f"图片超过 {MAX_IMAGE_BYTES // 1024 // 1024}MB")
+                    chunks.append(chunk)
+        data = b"".join(chunks)
+        suffix = mimetypes.guess_extension(content_type) or ".img"
+        path = IMAGE_TEMP_DIR / f"{uuid.uuid4().hex}{suffix}"
+        try:
+            await asyncio.to_thread(path.write_bytes, data)
+            encoded = base64.b64encode(data).decode("ascii")
+            return f"data:{content_type};base64,{encoded}"
+        finally:
+            await asyncio.to_thread(path.unlink, missing_ok=True)
 
     async def _flatten_segments(
         self, segments: list[dict[str, Any]] | str

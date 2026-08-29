@@ -78,6 +78,9 @@ class Channel(ABC):
         """
         return True
 
+    async def prepare_incoming(self, incoming: IncomingMessage) -> None:
+        """在消息交给模型前准备渠道资源；默认无需处理。"""
+
     @abstractmethod
     async def send_text(
         self,

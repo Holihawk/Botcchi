@@ -10,6 +10,7 @@ from botcchi.agent.events import TurnComplete
 from botcchi.agent.loop import AgentLoop
 from botcchi.agent.messages import system, user
 from botcchi.app import create_app
+from botcchi.channels.base import IncomingMessage, SessionKey
 from botcchi.channels.onebot.adapter import OneBotAdapter
 from botcchi.config import OneBotSettings, ProviderSettings, load_settings
 from botcchi.providers.base import ProviderError
@@ -82,6 +83,45 @@ async def test_quoted_image_is_visible():
     assert "看这个" in incoming.text
     assert "这是什么" in incoming.text
     assert incoming.images == ["http://img/1.jpg"]
+
+
+async def test_inbound_images_are_materialized_for_model():
+    adapter = OneBotAdapter(OneBotSettings(), on_message=None)  # type: ignore[arg-type]
+    adapter._download_image = lambda url: _download_image_for_test(url)  # type: ignore[method-assign]
+    incoming = IncomingMessage(
+        session=SessionKey(channel="onebot", chat_type="group", chat_id="1"),
+        user_id="2",
+        user_name="u",
+        text="看图",
+        images=["https://qq.example/image.jpg"],
+    )
+    await adapter.prepare_incoming(incoming)
+    assert incoming.images[0].startswith("data:image/jpeg;base64,")
+
+
+async def _download_image_for_test(url: str) -> str:
+    import base64
+
+    return "data:image/jpeg;base64," + base64.b64encode(b"jpeg").decode()
+
+
+async def test_unreachable_inbound_image_is_skipped():
+    adapter = OneBotAdapter(OneBotSettings(), on_message=None)  # type: ignore[arg-type]
+
+    async def fail(_url: str) -> str:
+        raise TimeoutError("image timeout")
+
+    adapter._download_image = fail  # type: ignore[method-assign]
+    incoming = IncomingMessage(
+        session=SessionKey(channel="onebot", chat_type="group", chat_id="1"),
+        user_id="2",
+        user_name="u",
+        text="【被引用的消息】[图片]\n评价一下",
+        images=["https://qq.example/expired.jpg"],
+    )
+    await adapter.prepare_incoming(incoming)
+    assert incoming.images == []
+    assert "[图片]" in incoming.text
 
 
 async def test_quoted_forward_records_are_visible():
