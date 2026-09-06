@@ -18,6 +18,7 @@ from loguru import logger
 from . import __version__
 from .agent.assistant import load_assistants
 from .agent.loop import AgentLoop
+from .campus_map import CampusMapService, build_campus_map_tool
 from .channels.base import Channel
 from .channels.onebot.adapter import OneBotAdapter
 from .config import ProviderSettings, Settings
@@ -226,6 +227,10 @@ def build_context(
     music = MusicService()
     tools.register(build_music_tool(music))
     tools.register(build_poke_tool())
+
+    # 南邮校园地图：静态资源随包分发，无外部依赖
+    campus_maps = CampusMapService()
+    tools.register(build_campus_map_tool(campus_maps))
 
     perms_store = PermStore(db) if db is not None else None
     perms = PermissionGate(
