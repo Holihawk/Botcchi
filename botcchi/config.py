@@ -217,10 +217,12 @@ class StickerSettings(BaseModel):
     """表情包：波奇按心情发 QQ 表情（assets/stickers/<情绪>/ 目录注册）"""
 
     enabled: bool = True
-    cooldown_seconds: float = 45.0
+    cooldown_seconds: float = 15.0
     """同一会话两次表情包的最小间隔（秒）"""
-    probability: float = 1.0
-    """模型给出表情标记后实际发送的概率（0~1，调低可更克制）"""
+    probability: float = Field(default=1.0, ge=0.0, le=1.0)
+    """显式 send_sticker 工具实际发送的概率"""
+    auto_probability: float = Field(default=0.35, ge=0.0, le=1.0)
+    """聊天回复带有情绪标记时，自动追加表情包的概率"""
 
 
 class WebSearchSettings(BaseModel):

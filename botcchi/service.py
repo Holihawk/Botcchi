@@ -463,7 +463,7 @@ class ChatService:
         await self._send_reply(incoming, channel, assistant, reply)
         if emotion is not None and sticker_ok:
             assert self.stickers is not None
-            await self.stickers.send(channel, incoming.session, emotion)
+            await self.stickers.send_auto(channel, incoming.session, emotion)
         self._maybe_extract_memory(incoming, history, persisted_user, reply)
         logger.info(
             f"[{incoming.session}] {incoming.user_name}: "

@@ -6,7 +6,7 @@
 触发走「回复尾标记」而非工具：system prompt 告知可用情绪，模型在合适时
 于回复末尾附 [表情:害羞]；发送前把标记剥离，按情绪随机挑一张以
 sub_type=1（QQ 表情）发出。标记法在伪人插话（无工具上下文）场景同样有效。
-防刷屏：每会话冷却 + 全局概率闸；同情绪近期不重复（小 LRU）。
+防刷屏：每会话冷却 + 自动/显式独立概率闸；同情绪近期不重复（小 LRU）。
 另有 send_sticker 工具供模型在直接对话中主动斗图。
 """
 
@@ -69,10 +69,10 @@ class StickerService:
             return ""
         emotions = "、".join(self.stickers)
         return (
-            "\n\n[表情包] 你可以发表情包：在回复的最末尾附上一个标记"
-            "（格式：[表情:情绪]），系统会替你配图发出。可用情绪："
-            f"{emotions}。只在情绪确实强烈、表情包能加分时用，"
-            "至多一个，多数回复不需要。标记必须放在最后，别解释它。"
+            "\n\n[表情包] 回复中有明确情绪时，在最末尾附上对应的情绪标记"
+            "（格式：[表情:情绪]），系统会自行决定是否配图。可用情绪："
+            f"{emotions}。日常的开心、疑惑、害羞、无语等情绪也可以标记，"
+            "不必等到情绪非常强烈。至多标记一个，必须放在最后，别解释它。"
         )
 
     def extract(self, text: str) -> tuple[str, str | None]:
@@ -86,7 +86,13 @@ class StickerService:
 
     # ---- 挑选与发送 ------------------------------------------------------
 
-    def pick(self, session: SessionKey, emotion: str) -> Path | None:
+    def pick(
+        self,
+        session: SessionKey,
+        emotion: str,
+        *,
+        probability: float | None = None,
+    ) -> Path | None:
         """冷却/概率闸后随机挑一张；不通过返回 None（不计冷却）"""
         files = self.stickers.get(emotion)
         if not files or not self.enabled:
@@ -96,7 +102,8 @@ class StickerService:
         last = self._last_sent.get(key)
         if last is not None and now - last < self.settings.cooldown_seconds:
             return None
-        if self.rng.random() > self.settings.probability:
+        chance = self.settings.probability if probability is None else probability
+        if self.rng.random() >= chance:
             return None
         recent = self._recent.setdefault(emotion, [])
         pool = [f for f in files if f not in recent] or files
@@ -108,10 +115,15 @@ class StickerService:
         return choice
 
     async def send(
-        self, channel: Channel, session: SessionKey, emotion: str
+        self,
+        channel: Channel,
+        session: SessionKey,
+        emotion: str,
+        *,
+        probability: float | None = None,
     ) -> bool:
         """挑选并发送表情包；channel 不支持或发送失败静默放弃"""
-        file = self.pick(session, emotion)
+        file = self.pick(session, emotion, probability=probability)
         if file is None:
             return False
         try:
@@ -122,6 +134,17 @@ class StickerService:
         except Exception:
             logger.exception(f"表情包发送失败: {emotion}/{file.name}")
             return False
+
+    async def send_auto(
+        self, channel: Channel, session: SessionKey, emotion: str
+    ) -> bool:
+        """按自动回复概率发送模型标注的情绪表情"""
+        return await self.send(
+            channel,
+            session,
+            emotion,
+            probability=self.settings.auto_probability,
+        )
 
     async def send_random(
         self, channel: Channel, session: SessionKey, emotions: tuple[str, ...]

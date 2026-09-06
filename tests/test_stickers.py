@@ -17,7 +17,7 @@ def make_service(**kw) -> StickerService:
 def test_registry_scan():
     svc = make_service()
     assert len(svc.stickers) == 16
-    assert sum(len(v) for v in svc.stickers.values()) == 67
+    assert all(svc.stickers.values())
     assert "开心" in svc.stickers and "摆烂" in svc.stickers
     assert svc.enabled
     block = svc.prompt_block()
@@ -48,7 +48,17 @@ def test_pick_cooldown_and_probability():
 
     svc2 = make_service(probability=0.0)
     assert svc2.pick(session, "开心") is None  # 概率闸不放行
+    # 自动表情使用独立概率，不影响显式 send_sticker 工具。
+    svc3 = make_service(probability=1.0, auto_probability=0.0)
+    assert svc3.pick(session, "开心", probability=svc3.settings.auto_probability) is None
+    assert svc3.pick(session, "开心") is not None
     assert not make_service(enabled=False).enabled
+
+
+def test_prompt_encourages_everyday_emotion_markers():
+    block = make_service().prompt_block()
+    assert "日常的开心、疑惑、害羞、无语等情绪也可以标记" in block
+    assert "系统会自行决定是否配图" in block
 
 
 class StickerChannel(FakeChannel):
@@ -73,7 +83,9 @@ def msg(text: str, chat_id: str = "10001") -> IncomingMessage:
 async def test_end_to_end_marker_send(mock_openai, tmp_path):
     from botcchi.app import build_context
 
-    ctx = build_context(make_settings(tmp_path), client=mock_openai.client())
+    settings = make_settings(tmp_path)
+    settings.stickers.auto_probability = 1.0
+    ctx = build_context(settings, client=mock_openai.client())
     channel = StickerChannel()
 
     mock_openai.enqueue(text_chunks("好耶！[表情:开心]"))

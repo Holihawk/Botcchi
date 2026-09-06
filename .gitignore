@@ -19,4 +19,7 @@ log/
 node_modules/
 web/dist/
 
+REWRITE_PLAN.md
+LEGACY_FEATURES.md
+usage.md
 
