@@ -40,17 +40,17 @@ FEATURES: dict[str, Feature] = {
         ),
         Feature(
             "决斗",
-            "轮盘决斗小游戏（游戏券入场）",
+            "轮盘决斗小游戏（游戏券优先抵扣入场费）",
             commands=("决斗",),
         ),
         Feature(
             "24点",
-            "24 点抢答小游戏（游戏券入场）",
+            "24 点抢答小游戏（游戏券优先抵扣入场费）",
             commands=("24点",),
         ),
         Feature(
             "21点",
-            "Blackjack 对庄小游戏（游戏券入场）",
+            "Blackjack 对庄小游戏（游戏券优先抵扣入场费）",
             commands=("blackjack",),
         ),
         Feature(

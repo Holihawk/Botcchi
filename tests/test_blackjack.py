@@ -73,7 +73,8 @@ async def test_lobby_flow(ctx):
     channel = FakeChannel()
     bj: BlackjackService = ctx.service.blackjack
     await ctx.service.handle(msg("blackjack"), channel)
-    assert "游戏券" in channel.sent[-1][1]  # 没券
+    assert "开了一桌" in channel.sent[-1][1]  # 没券时金币直付
+    await bj._lobby_timeout(bj.games["777"])
     await give_tickets(ctx, "10001")
     await ctx.service.handle(msg("blackjack 梭哈"), channel)
     assert "赛制有「对庄」" in channel.sent[-1][1]

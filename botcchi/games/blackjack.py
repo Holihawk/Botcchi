@@ -1,15 +1,15 @@
-"""Blackjack 21 点小游戏（纯文字，游戏券入场）。
+"""Blackjack 21 点小游戏（纯文字，游戏券优先抵扣入场费）。
 
 - 「blackjack」开桌/入座（最多 8 人），发起者「开始」开局，120s 未开局
-  流局退券；每人 2 张游戏券。指令用英文名避免误拦「晚上21点集合」。
+  流局原路退还入场费；每人入场费为 2 张游戏券或 100 金币。指令用英文名避免误拦「晚上21点集合」。
 - **对庄制**（默认，单人可玩）：每个玩家独立对抗庄家小波奇，明牌无信息
   泄露，全员并行拿牌/停牌。庄家一明一暗，玩家全部停牌后开暗牌、补到
   17 点停（软 17 停）；玩家爆牌即负。赔付：胜 +200、Blackjack 胜 +250、
-  平局退还 2 张游戏券。
+  平局原路退还入场费。
 - **暗牌赛制**（「blackjack 暗牌」，至少 2 人）：玩家互比点数抢彩池——
   手牌与抽到的牌全部**私聊**发放，群里只公告拿牌张数；全员停牌后开牌，
   未爆的最高点（Blackjack 优先）均分奖池 180×人数，全爆则奖池回收。
-  私聊发不出去（非好友）时发牌阶段直接流局退券。
+  私聊发不出去（非好友）时发牌阶段直接流局并原路退还入场费。
 - 90s 无人动作自动全员停牌结算；两副牌（104 张），不会抽穿。
 """
 
@@ -22,7 +22,7 @@ from loguru import logger
 from ..channels.base import Channel, IncomingMessage, SessionKey
 from ..db.engine import Database
 from ..social.service import SocialService
-from .base import TicketGameService
+from .base import TICKET_PRICE, TicketGameService
 
 TICKET_COST = 2
 WIN_PRIZE = 200
@@ -120,8 +120,8 @@ class BlackjackService(TicketGameService):
     # ---- 游戏券 ------------------------------------------------------------
 
     NEED_TICKETS = (
-        f"上桌要 {TICKET_COST} 张游戏券哦，"
-        f"先发送「购买 游戏券 {TICKET_COST}」"
+        f"上桌需要 {TICKET_COST} 张游戏券或等值金币（游戏券优先），"
+        f"可发送「购买 游戏券 {TICKET_COST}」"
     )
 
 
@@ -201,7 +201,8 @@ class BlackjackService(TicketGameService):
                 )
             await channel.send_text(
                 session,
-                f"{name} 开了一桌 21 点·{mode}（每人 {TICKET_COST} 张游戏券，"
+                f"{name} 开了一桌 21 点·{mode}（每人 {TICKET_COST} 张游戏券或"
+                f"{TICKET_COST * TICKET_PRICE} 金币，有券优先，"
                 f"最多 {MAX_PLAYERS} 人）！{rules}。\n"
                 "发送「blackjack」入座，发起者发送「开始」开局",
             )
@@ -271,7 +272,7 @@ class BlackjackService(TicketGameService):
         return True
 
     async def _start_hidden(self, channel: Channel, game: Game) -> None | bool:
-        """暗牌发牌：手牌私聊，任何一封发不出去则流局退券。"""
+        """暗牌发牌：手牌私聊，任何一封发不出去则流局并原路退款。"""
         for p in game.players.values():
             p.cards = [game.deck.pop(), game.deck.pop()]
             note = ""
@@ -285,12 +286,12 @@ class BlackjackService(TicketGameService):
                     f"点数:{score(p.cards)}{note}",
                 )
             except Exception:
+                await self._refund(game.group_id, *game.players)
                 await self._close_game(game)
-                await self._refund(*game.players)
                 await channel.send_text(
                     game.session,
                     f"给 {p.name} 的私聊发不出去（需要和小波奇是好友），"
-                    "本局流局，游戏券已全部退还",
+                    "本局流局，入场费已全部原路退还",
                 )
                 return True
         pool = HIDDEN_POOL_PER_PLAYER * len(game.players)
@@ -380,8 +381,8 @@ class BlackjackService(TicketGameService):
         self, channel: Channel, game: Game, timed_out: bool = False
     ) -> None:
         game.cancel_timer()
-        await self._close_game(game)
         if game.mode == "暗牌":
+            await self._close_game(game)
             await self._showdown(channel, game, timed_out)
             return
         # 庄家开暗牌，补到 17（软 17 停）
@@ -395,6 +396,7 @@ class BlackjackService(TicketGameService):
         lines = ["21 点结算" + ("（超时自动停牌）" if timed_out else "")]
         lines.append(f"庄家小波奇: {fmt(game.dealer)} 点数:{d_score}{d_note}")
         refund_ids: list[str] = []
+        prizes: list[tuple[str, int]] = []
         for p in game.players.values():
             s = score(p.cards)
             p_bj = is_blackjack(p.cards)
@@ -402,18 +404,21 @@ class BlackjackService(TicketGameService):
                 outcome, mark = "爆牌", "💥"
             elif p_bj and not d_bj:
                 outcome, mark = f"Blackjack 胜！+{BJ_PRIZE} 金币", "🎉"
-                await self.social.add_coins(p.user_id, BJ_PRIZE, "blackjack")
+                prizes.append((p.user_id, BJ_PRIZE))
             elif d_bust or s > d_score:
                 outcome, mark = f"胜！+{WIN_PRIZE} 金币", "🏆"
-                await self.social.add_coins(p.user_id, WIN_PRIZE, "blackjack")
+                prizes.append((p.user_id, WIN_PRIZE))
             elif s == d_score and p_bj == d_bj:
-                outcome, mark = f"平局，退还 {TICKET_COST} 张游戏券", "🤝"
+                outcome, mark = "平局，退还入场费", "🤝"
                 refund_ids.append(p.user_id)
             else:
                 outcome, mark = "负", "💸"
             lines.append(f"{mark} {p.name}: {fmt(p.cards)} 点数:{s} — {outcome}")
         if refund_ids:
-            await self._refund(*refund_ids)
+            await self._refund(game.group_id, *refund_ids)
+        for user_id, amount in prizes:
+            await self.social.add_coins(user_id, amount, "blackjack")
+        await self._close_game(game)
         await channel.send_text(game.session, "\n".join(lines))
 
     async def _showdown(
@@ -454,12 +459,12 @@ class BlackjackService(TicketGameService):
 
 
     async def _lobby_timeout(self, game: Game) -> None:
+        await self._refund(game.group_id, *game.players)
         await self._close_game(game)
-        await self._refund(*game.players)
         if self._channel is not None:
             try:
                 await self._channel.send_text(
-                    game.session, "21 点超时未开局，已流局，游戏券全部退还"
+                    game.session, "21 点超时未开局，已流局，入场费全部原路退还"
                 )
             except Exception:
                 logger.warning("21 点流局通知发送失败")

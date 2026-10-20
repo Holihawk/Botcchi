@@ -167,10 +167,10 @@ class UserItemRow(Base):
 
 
 class GameEscrowRow(Base):
-    """对局中的游戏券托管：入座时记一行，正常终局整组删除。
+    """对局中的入场费托管：入座时记一行，正常终局整组删除。
 
-    对局状态在内存中，进程崩溃/重启会丢局——启动时把残留托管全数退款，
-    玩家的券不会因崩溃蒸发。
+    入场费可以由游戏券和金币混合支付。对局状态在内存中，进程崩溃/重启会丢局，
+    启动时把残留托管全数退款。
     """
 
     __tablename__ = "game_escrows"
@@ -182,6 +182,8 @@ class GameEscrowRow(Base):
     group_id: Mapped[str] = mapped_column(String(64))
     user_id: Mapped[str] = mapped_column(String(64))
     tickets: Mapped[int] = mapped_column()
+    coins: Mapped[int] = mapped_column(default=0)
+    """本次入场直接扣除的金币"""
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

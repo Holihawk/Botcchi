@@ -8,6 +8,7 @@
 """
 
 import random
+import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
@@ -81,10 +82,18 @@ GOODS: dict[str, Goods] = {
 
 
 def goods_by_name(name: str) -> Goods | None:
+    name = normalize_goods_name(name)
     for g in GOODS.values():
-        if g.name == name:
+        if normalize_goods_name(g.name) == name:
             return g
     return None
+
+
+def normalize_goods_name(value: str) -> str:
+    """统一全角字符、不可见空格和连续空白，避免商品名匹配失败。"""
+    value = unicodedata.normalize("NFKC", value)
+    value = "".join(c for c in value if unicodedata.category(c) != "Cf")
+    return " ".join(value.split())
 
 
 # ---- 背包操作（session 级助手，供本服务与签到事务内复用） -----------------
@@ -127,11 +136,17 @@ async def take_item(s, user_id: str, item_id: str, n: int = 1) -> bool:
 # ---- 游戏券托管（崩溃恢复） -----------------------------------------------
 
 
-def escrow_add(s, game: str, group_id: str, user_id: str, tickets: int) -> None:
-    """入座扣券的同一事务里记托管，正常终局用 escrow_clear 整组删除"""
+def escrow_add(
+    s, game: str, group_id: str, user_id: str, tickets: int, coins: int = 0
+) -> None:
+    """入座扣除入场费的同一事务里记托管，正常终局用 escrow_clear 删除。"""
     s.add(
         GameEscrowRow(
-            game=game, group_id=group_id, user_id=user_id, tickets=tickets
+            game=game,
+            group_id=group_id,
+            user_id=user_id,
+            tickets=tickets,
+            coins=coins,
         )
     )
 
@@ -147,7 +162,7 @@ async def escrow_clear(s, game: str, group_id: str) -> None:
 
 
 async def refund_escrows(db: Database) -> tuple[int, int]:
-    """启动时退还全部残留托管（崩溃或重启丢掉的对局），返回 (人数, 券数)"""
+    """启动时退还全部残留托管，返回 (人数, 券数)。金币也会一并退回。"""
     async with db.session() as s:
         rows = (await s.scalars(select(GameEscrowRow))).all()
         if not rows:
@@ -156,6 +171,21 @@ async def refund_escrows(db: Database) -> tuple[int, int]:
         tickets = 0
         for r in rows:
             await add_item(s, r.user_id, "game_ticket", r.tickets)
+            if r.coins:
+                user = await s.scalar(
+                    select(SocialUserRow).where(SocialUserRow.user_id == r.user_id)
+                )
+                if user is None:
+                    s.add(SocialUserRow(user_id=r.user_id, coins=r.coins))
+                else:
+                    user.coins += r.coins
+                s.add(
+                    CoinLogRow(
+                        user_id=r.user_id,
+                        amount=r.coins,
+                        reason=f"game_refund:{r.game}",
+                    )
+                )
             users.add(r.user_id)
             tickets += r.tickets
             await s.delete(r)
@@ -409,7 +439,8 @@ def build_shop_commands(shop: ShopService | None, cards) -> list:
                 incoming.session, "要买什么呀？用法：购买 商品名 [数量]"
             )
             return True
-        # 末尾的数字 token 视为购买数量：「购买 游戏券 5」
+        # 统一全角空格等输入；末尾数字 token 视为购买数量。
+        rest = normalize_goods_name(rest)
         count = 1
         name = rest
         head, _, tail = rest.rpartition(" ")

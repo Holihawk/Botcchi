@@ -20,6 +20,54 @@ WebUI 构建（首次或前端更新后执行）：
 cd web && npm install && npm run build
 ```
 
+## 数据库备份与恢复
+
+使用 `scripts/restore_database.sh` 恢复 PostgreSQL custom-format 备份。恢复会覆写目标库中的表和数据，执行前先停止 Botcchi：
+
+```bash
+systemctl --user stop botcchi.service
+scripts/restore_database.sh \
+  --dump data/backups/botcchi-<时间戳>.dump \
+  --database-url 'postgresql://botcchi:botcchi@127.0.0.1:5432/botcchi' \
+  --yes
+systemctl --user start botcchi.service
+```
+
+脚本默认拒绝存在其他数据库连接的恢复；在确认维护窗口后，可额外传入 `--terminate-connections`。备份文件建议通过受控的对象存储或 SSH 传输，不要提交到 Git。
+
+如果服务器没有安装 `psql` 和 `pg_restore`，而 PostgreSQL 运行在 Podman 容器中，可直接使用容器内的客户端：
+
+```bash
+scripts/restore_database.sh \
+  --dump /root/backups/botcchi-<时间戳>.dump \
+  --database-url 'postgresql://botcchi:密码@127.0.0.1:5433/botcchi' \
+  --podman-container njupt-postgres \
+  --yes
+```
+
+脚本会临时将备份复制到容器内，恢复完成后自动删除临时文件。容器内 PostgreSQL 使用 `127.0.0.1:5432`，因此命令中的 `--database-url` 仍应填写宿主机端口 `5433`。
+
+部署代码包可通过下列脚本生成并上传。它会保留运行所需的配置、资源和 `web/dist`，自动排除虚拟环境、缓存、Git 目录、日志、旧版项目、测试、前端依赖和数据库备份：
+
+```bash
+scripts/package_and_upload.sh --host a.b.c.d --user deploy \
+  --backup data/backups/botcchi-<时间戳>.dump
+```
+
+默认上传到 `deploy@a.b.c.d:/opt/botcchi/releases/`；可用 `--remote-dir` 修改。首次只打包检查可加 `--no-upload`。部署包和数据库备份都会被 Git 忽略，代码包内含运行密钥，应仅传至可信服务器。
+
+如果使用 root 用户的家目录（`/root`），可以这样上传：
+
+```bash
+scripts/package_and_upload.sh \
+  --host a.b.c.d \
+  --user root \
+  --remote-dir /root \
+  --backup data/backups/botcchi-<时间戳>.dump
+```
+
+这会将压缩包放到 `/root/`。如果你指的是整台系统的根目录 `/`，虽然可以传入 `--remote-dir /`，但不建议这样做；应使用 `/root` 或 `/opt/botcchi/releases` 这类专用目录。
+
 服务地址：
 
 - WebUI/API：`http://localhost:8300/`
@@ -121,13 +169,13 @@ WebUI 提供：流式对话、多会话、人格编辑、Provider/模型管理�
 | `购买 <商品> [数量]` | 所有人 | 使用金币购买商品（可叠加商品最多 99 件） |
 | `佩戴 <挂件>` / `装备 <挂件>` / `取下挂件` | 所有人 | 管理头像挂件 |
 | `我的背包` / `背包` | 所有人 | 查看物品与金币余额 |
-| `决斗@某人` / `@某人 决斗` | 群内所有人 | 发起 1v1 轮盘决斗；对方 45 秒内发送 `接受` 或 `拒绝` |
+| `决斗@某人` / `@某人 决斗` | 群内所有人 | 发起 1v1 轮盘决斗；对方 45 秒内发送 `接受` 或 `拒绝`；入场费优先使用游戏券，不足部分用金币 |
 | `决斗` | 群内所有人 | 开启或加入多人桌，最多 6 人；发起者用 `开始` 开局 |
 | `选 <道具>` | 决斗玩家 | 开局前选择糖、手铐、透镜或延长管 |
 | `打自己` / `打对面` / `打@某人` | 当前回合玩家 | 开枪 |
 | `用 <道具>` | 当前回合玩家 | 使用道具；手铐需指定目标 |
-| `24点` | 群内所有人 | 开启或加入抢答桌，最多 8 人；`开始` 后直接发送算式，每轮最多 3 次 |
-| `blackjack` | 群内所有人 | 开启对庄 Blackjack（最多 8 人，单人可玩）；`开始`、`拿牌`、`停牌` |
+| `24点` | 群内所有人 | 开启或加入抢答桌，最多 8 人；入场费优先使用游戏券，不足部分用金币；`开始` 后直接发送算式，每轮最多 3 次 |
+| `blackjack` | 群内所有人 | 开启对庄 Blackjack（最多 8 人，单人可玩）；入场费优先使用游戏券，不足部分用金币；`开始`、`拿牌`、`停牌` |
 | `blackjack 暗牌` | 群内所有人 | 私聊发牌的暗牌赛制（至少 2 人，需能私聊 bot） |
 | `今日小猪` | 所有人 | 抽取当天固定的小猪占卜卡 |
 | `随机小猪 [数量]` / `找猪 <关键词>` | 所有人 | 从 PigHub 获取随机或关键词猪图 |
@@ -162,17 +210,3 @@ WebUI 提供：流式对话、多会话、人格编辑、Provider/模型管理�
 | `退群 <群号>` | 退出指定群 |
 
 触发规则：@机器人、包含 `trigger.wake_words` 的消息和私聊默认必回；群内其他消息按 `group_reply_rate` 概率进入伪人模式。伪人插话使用群窗口，但不携带用户上下文工具。
-
-## 架构与状态
-
-核心采用 Python + FastAPI + pydantic + httpx 的轻量 Agent Loop：Channel 层（OneBot/Web）与 Agent Core 解耦；Core 包含 Provider、Assistant、Memory、Tool Registry、Trigger Engine、Social 和 MCP 客户端。WebUI 通过 REST + SSE 通信，QQ 回复按人格策略聚合、分段发送。
-
-当前重构已完成 M1（Agent/Provider/OneBot/人格）、M2（触发、持久化、记忆、多人格）和 M3（WebUI）；M4 生态已落地群总结、日报、提醒、天气、绘图、链接解析、签到/好感度/金币、小游戏、权限/群管理、帮助和统计等。旧版数据不迁移，旧功能中校园电费、校园地图、响应时段守卫及部分危险管理操作暂不实现。
-
-## 数据与运行
-
-无 `database.url` 时会话和人格绑定使用内存，重启丢失且长期记忆不可用；无 Redis 时群聊窗口使用进程内实现。生产环境建议启用 PostgreSQL + Redis，并持久化 `data/`。定时总结、日报和提醒按 Asia/Shanghai 调度。
-
-## 安全
-
-不要把 `config.yaml`、`data/providers.yaml` 或包含密钥的日志提交到仓库。MCP、联网解析和图片生成均由配置控制，外部服务不可用时相关功能会降级，不影响核心对话服务。

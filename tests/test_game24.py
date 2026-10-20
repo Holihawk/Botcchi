@@ -95,7 +95,8 @@ async def test_lobby_and_refund(ctx):
     channel = FakeChannel()
     g24: Game24Service = ctx.service.game24
     await ctx.service.handle(msg("24点"), channel)
-    assert "游戏券" in channel.sent[-1][1]  # 没券
+    assert "开了一桌" in channel.sent[-1][1]  # 没券时金币直付
+    await g24._lobby_timeout(g24.games["777"])
     await give_tickets(ctx, "10001", "10002")
     await ctx.service.handle(msg("24点"), channel)
     assert "开了一桌" in channel.sent[-1][1]

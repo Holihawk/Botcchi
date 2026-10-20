@@ -292,6 +292,8 @@ async def test_shop_commands_integration(mock_openai, tmp_path):
 
     await ctx.service.handle(msg("购买 游戏券 3"), channel)  # 初始 200 够 150
     assert "游戏券×3」成功" in channel.sent[-1][1]
+    await ctx.service.handle(msg("购买\u3000游戏券", user_id="10002"), channel)
+    assert "购买「游戏券」成功" in channel.sent[-1][1]
     await ctx.service.handle(msg("我的背包"), channel)
     assert "游戏券 ×3" in channel.sent[-1][1]
 

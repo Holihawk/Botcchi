@@ -91,28 +91,33 @@ async def test_overview(ctx):
 
 
 async def test_escrow_lifecycle_and_crash_refund(ctx):
-    """决斗入座记托管；正常终局清托管；崩溃残留由启动退款兜底。"""
+    """混合入场费记托管；崩溃残留时游戏券和金币一起退还。"""
     from botcchi.social.shop import add_item, item_count, refund_escrows
 
     async with ctx.db.session() as s:
-        await add_item(s, "10001", "game_ticket", 3)
+        await add_item(s, "10001", "game_ticket", 1)
         await s.commit()
     channel = FakeChannel()
+    base_profile = await ctx.service.social.profile("10001")
     await ctx.service.handle(msg("决斗", mentions=["10002"]), channel)
 
     async with ctx.db.session() as s:
         rows = (await s.scalars(select(GameEscrowRow))).all()
-        assert [(r.game, r.user_id, r.tickets) for r in rows] == [
-            ("duel", "10001", 3)
+        assert [(r.game, r.user_id, r.tickets, r.coins) for r in rows] == [
+            ("duel", "10001", 1, 100)
         ]
         assert await item_count(s, "10001", "game_ticket") == 0
+        profile = await ctx.service.social.peek("10001")
+        assert profile is not None and profile.coins == base_profile.coins - 100
 
     # 模拟进程崩溃重启：内存对局丢失，启动时托管退款
     ctx.service.duel.games.clear()
     users, tickets = await refund_escrows(ctx.db)
-    assert (users, tickets) == (1, 3)
+    assert (users, tickets) == (1, 1)
     async with ctx.db.session() as s:
-        assert await item_count(s, "10001", "game_ticket") == 3
+        assert await item_count(s, "10001", "game_ticket") == 1
+        profile = await ctx.service.social.peek("10001")
+        assert profile is not None and profile.coins == base_profile.coins
         assert (await s.scalars(select(GameEscrowRow))).all() == []
     # 幂等：再退一次无事发生
     assert await refund_escrows(ctx.db) == (0, 0)

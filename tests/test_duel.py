@@ -1,9 +1,11 @@
 """决斗小游戏：约战/大厅/彩蛋、游戏券消耗与退还、对局机制、奖池结算。"""
 
 import pytest
+from sqlalchemy import select
 from test_service import FakeChannel, make_settings
 
 from botcchi.channels.base import IncomingMessage, SessionKey
+from botcchi.db.models import GameEscrowRow
 from botcchi.games.duel import DuelService
 
 
@@ -61,15 +63,17 @@ async def give_tickets(ctx, *user_ids: str, n: int = 3):
         await s.commit()
 
 
-async def test_easter_egg_and_no_tickets(ctx):
+async def test_easter_egg_and_coin_entry(ctx):
     channel = FakeChannel()
     # 约 bot：彩蛋
     await ctx.service.handle(msg("决斗", at_me=True), channel)
     assert "不敢玩这么危险的游戏" in channel.sent[-1][1]
-    # 没券开不了桌
+    # 没券时直接使用金币开桌
+    base = await coins(ctx, "10001")
     await ctx.service.handle(msg("决斗"), channel)
-    assert "游戏券" in channel.sent[-1][1] and "购买" in channel.sent[-1][1]
-    assert ctx.service.duel.games == {}
+    assert "开了一张决斗桌" in channel.sent[-1][1]
+    await ctx.service.duel._lobby_timeout(ctx.service.duel.games["777"])
+    assert (await coins(ctx, "10001")) == base
 
 
 async def test_challenge_refuse_refunds(ctx):
@@ -81,6 +85,21 @@ async def test_challenge_refuse_refunds(ctx):
     assert "婉拒" in channel.sent[-1][1]
     assert await tickets(ctx, "10001") == 3  # 已退还
     assert ctx.service.duel.games == {}
+
+
+async def test_mixed_entry_fee_refunds_tickets_and_coins(ctx):
+    channel = FakeChannel()
+    await give_tickets(ctx, "10001", n=2)
+    base = await coins(ctx, "10001")
+    await ctx.service.handle(msg("决斗", mentions=["10002"]), channel)
+    assert await tickets(ctx, "10001") == 0
+    assert await coins(ctx, "10001") == base - 50
+    async with ctx.db.session() as s:
+        row = (await s.scalars(select(GameEscrowRow))).one()
+        assert (row.tickets, row.coins) == (2, 50)
+    await ctx.service.handle(msg("拒绝", user_id="10002"), channel)
+    assert await tickets(ctx, "10001") == 2
+    assert await coins(ctx, "10001") == base
 
 
 async def test_choose_item_accepts_loose_wording(ctx):

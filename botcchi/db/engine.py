@@ -17,6 +17,7 @@ from .models import Base
 
 _ADDED_COLUMNS: list[tuple[str, str, str]] = [
     ("social_users", "pendant", "VARCHAR(32)"),
+    ("game_escrows", "coins", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

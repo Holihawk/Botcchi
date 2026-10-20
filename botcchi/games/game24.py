@@ -1,7 +1,7 @@
-"""24 点抢答小游戏（纯文字，游戏券入场）。
+"""24 点抢答小游戏（纯文字，游戏券优先抵扣入场费）。
 
 - 「24点」开桌/入座（最多 8 人，一群一桌），发起者「开始」开局，
-  120s 未开局流局退券；每人 1 张游戏券，奖池 80×人数。
+  120s 未开局流局原路退还入场费；每人入场费为 1 张游戏券或 50 金币，奖池 80×人数。
 - 共 5 轮：每轮发 4 张牌（1-13，保证有解），玩家直接发算式抢答，
   最先答对者当场赢下本轮奖金（奖池均分到每轮）；每人每轮限 3 次提交。
 - 无人解出（超时或全员用完次数）则公布一个解，该轮奖金顺延滚入下一轮；
@@ -23,7 +23,7 @@ from loguru import logger
 from ..channels.base import Channel, IncomingMessage, SessionKey
 from ..db.engine import Database
 from ..social.service import SocialService
-from .base import TicketGameService
+from .base import TICKET_PRICE, TicketGameService
 
 TICKET_COST = 1
 POOL_PER_PLAYER = 80
@@ -182,7 +182,8 @@ class Game24Service(TicketGameService):
     # ---- 游戏券 ------------------------------------------------------------
 
     NEED_TICKETS = (
-        f"参加 24 点要 {TICKET_COST} 张游戏券哦，先发送「购买 游戏券」"
+        f"参加 24 点需要 {TICKET_COST} 张游戏券或等值金币（游戏券优先），"
+        "可发送「购买 游戏券」"
     )
 
 
@@ -236,9 +237,10 @@ class Game24Service(TicketGameService):
             self._schedule(game, self.lobby_seconds, self._lobby_timeout)
             await channel.send_text(
                 session,
-                f"{name} 开了一桌 24 点（每人 {TICKET_COST} 张游戏券，"
+                f"{name} 开了一桌 24 点（每人 {TICKET_COST} 张游戏券或"
+                f"{TICKET_COST * TICKET_PRICE} 金币，有券优先，"
                 f"最多 {MAX_PLAYERS} 人）！发送「24点」入座，"
-                f"发起者发送「开始」开局，{self.lobby_seconds:.0f} 秒未开局流局退券",
+                f"发起者发送「开始」开局，{self.lobby_seconds:.0f} 秒未开局流局并原路退还入场费",
             )
             return True
         if game.phase != "lobby":
@@ -435,12 +437,12 @@ class Game24Service(TicketGameService):
 
 
     async def _lobby_timeout(self, game: Game) -> None:
+        await self._refund(game.group_id, *game.players)
         await self._close_game(game)
-        await self._refund(*game.players)
         if self._channel is not None:
             try:
                 await self._channel.send_text(
-                    game.session, "24 点超时未开局，已流局，游戏券全部退还"
+                    game.session, "24 点超时未开局，已流局，入场费全部原路退还"
                 )
             except Exception:
                 logger.warning("24 点流局通知发送失败")

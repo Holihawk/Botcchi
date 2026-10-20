@@ -102,12 +102,12 @@ class AppContext:
         if self.db is not None:
             await self.db.init()
             if self.service.social is not None:
-                # 崩溃/重启丢掉的对局：把托管中的游戏券退还给玩家
+                # 崩溃/重启丢掉的对局：把托管中的入场费退还给玩家
                 users, tickets = await refund_escrows(self.db)
                 if tickets:
                     logger.warning(
                         f"检测到上次未结束的对局，已向 {users} 名玩家"
-                        f"退还共 {tickets} 张游戏券"
+                        f"退还共 {tickets} 张游戏券（金币入场费也已退还）"
                     )
         if self.mcp is not None:
             await self.mcp.start(self.service.loop.tools)

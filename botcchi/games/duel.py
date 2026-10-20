@@ -1,4 +1,4 @@
-"""轮盘决斗小游戏（恶魔轮盘赌改编，消耗游戏券）。
+"""轮盘决斗小游戏（恶魔轮盘赌改编，入场费由游戏券优先抵扣）。
 
 - 1v1 约战：「@某人 决斗」/「决斗@某人」，45s 内「接受」开局；1 条命，
   道具池只有手铐/透镜；接受者先手。约 bot 触发旧版彩蛋。
@@ -7,7 +7,7 @@
   之后按加入顺序轮转。
 - 弹夹 3n+1 发、实弹 n-1 或 n（n 为存活人数，开局公告确切实弹数）；
   打空后按存活人数重新装填并给每人补发一件道具。
-- 空弹打自己继续行动；每人先消耗 3 张游戏券入场，流局全额退还。
+- 空弹打自己继续行动；每人入场费为 3 张券（每张按 50 金币计），流局原路退还。
 - 奖池 120×参赛人数：1v1 胜者全拿；多人 70%/20%/10% 前三名，
   超时判负者不参与分配（份额并入冠军）。
 """
@@ -22,7 +22,7 @@ from loguru import logger
 from ..channels.base import Channel, IncomingMessage, SessionKey
 from ..db.engine import Database
 from ..social.service import SocialService
-from .base import TicketGameService
+from .base import TICKET_PRICE, TicketGameService
 
 TICKET_COST = 3
 POOL_PER_PLAYER = 120
@@ -124,8 +124,8 @@ class DuelService(TicketGameService):
 
 
     NEED_TICKETS = (
-        f"参加决斗要 {TICKET_COST} 张游戏券哦，"
-        f"先发送「购买 游戏券 {TICKET_COST}」"
+        f"参加决斗需要 {TICKET_COST} 张游戏券或等值金币（游戏券优先），"
+        f"可发送「购买 游戏券 {TICKET_COST}」"
     )
 
     # ---- 入口分发 ----------------------------------------------------------
@@ -208,7 +208,8 @@ class DuelService(TicketGameService):
                 session,
                 f"{name} 发起了决斗！{self.challenge_seconds:.0f} 秒内发送"
                 "「接受」应战（「拒绝」婉拒）"
-                f"入场费 {TICKET_COST} 张游戏券，胜者全拿奖池！",
+                f"入场费 {TICKET_COST} 张游戏券或 {TICKET_COST * TICKET_PRICE} 金币"
+                "（有券优先），胜者全拿奖池！",
                 at_user=target,
             )
             return True
@@ -229,9 +230,10 @@ class DuelService(TicketGameService):
             self._schedule(game, self.lobby_seconds, self._lobby_timeout)
             await channel.send_text(
                 session,
-                f"{name} 开了一张决斗桌（每人 {TICKET_COST} 张游戏券，最多 6 人）！"
+                f"{name} 开了一张决斗桌（每人 {TICKET_COST} 张游戏券或"
+                f"{TICKET_COST * TICKET_PRICE} 金币，有券优先，最多 6 人）！"
                 f"发送「决斗」加入，发起者发送「开始」开局，"
-                f"{self.lobby_seconds:.0f} 秒未开局则流局退券",
+                f"{self.lobby_seconds:.0f} 秒未开局则流局并原路退还入场费",
             )
             return True
         if game.phase != "lobby":
@@ -263,10 +265,10 @@ class DuelService(TicketGameService):
             return False
         if text == "拒绝":
             game.cancel_timer()
+            await self._refund(game.group_id, game.initiator)
             await self._close_game(game)
-            await self._refund(game.initiator)
             await channel.send_text(
-                incoming.session, "对方婉拒了决斗，游戏券已退还"
+                incoming.session, "对方婉拒了决斗，入场费已原路退还"
             )
             return True
         if not await self._take_tickets(game.group_id, incoming.user_id):
@@ -586,14 +588,14 @@ class DuelService(TicketGameService):
 
 
     async def _challenge_timeout(self, game: Game) -> None:
+        await self._refund(game.group_id, game.initiator)
         await self._close_game(game)
-        await self._refund(game.initiator)
-        await self._say(game, "没有等到应战，决斗流局，游戏券已退还")
+        await self._say(game, "没有等到应战，决斗流局，入场费已原路退还")
 
     async def _lobby_timeout(self, game: Game) -> None:
+        await self._refund(game.group_id, *(p.user_id for p in game.players))
         await self._close_game(game)
-        await self._refund(*(p.user_id for p in game.players))
-        await self._say(game, "决斗桌超时未开局，已流局，游戏券全部退还")
+        await self._say(game, "决斗桌超时未开局，已流局，入场费全部原路退还")
 
     async def _choose_timeout(self, game: Game) -> None:
         for p in game.players:
